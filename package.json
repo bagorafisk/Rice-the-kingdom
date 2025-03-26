@@ -1,0 +1,17 @@
+{
+  "name": "rice-the-kingdom-ii",
+  "version": "1.0.0",
+  "description": "Rice the kingdom II",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "easystarjs": "^0.4.4",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
