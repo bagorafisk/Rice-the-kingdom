@@ -2,13 +2,56 @@ const socket = io();
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
+canvas.addEventListener('mousedown', () => {
+    canvas.focus();
+});
+
+window.addEventListener('load', () => {
+    canvas.focus();
+});
+
 const TILE_SIZE = 32;
 const MAP_HEIGHT = 64;
 const MAP_WIDTH = 64;
-const SCALE = 0.5;
+const VIEWPORT_WIDTH = 1600;
+const VIEWPORT_HEIGHT = 900;
+const SCALE = 2;
+const DRAG_SENSITIVITY = 1;
 
 const players = {};
-const map = [];
+let map = [];
+
+class Camera {
+    constructor() {
+        this.x = 0;
+        this.y = 0;
+        this.scale = SCALE;
+        this.width = Math.ceil(canvas.width / (TILE_SIZE * this.scale));
+        this.height = Math.ceil(canvas.height / (TILE_SIZE * this.scale));
+        this.following = null;
+        this.moveSpeed = 0.07;
+        this.isDragging = false;
+    }
+
+    setViewport(x, y) {
+        this.x = Math.max(0, Math.min(MAP_WIDTH - this.width, x));
+        this.y = Math.max(0, Math.min(MAP_HEIGHT - this.height, y));
+    }
+
+    follow(entity) {
+        this.following = entity;
+    }
+
+    update() {
+        if (!this.isDragging && this.following) {
+            this.x += (this.following.x - this.width / 2 - this.x) * this.moveSpeed;
+            this.y += (this.following.y - this.height / 2 - this.y) * this.moveSpeed;
+            this.setViewport(this.x, this.y);
+        }
+    }
+}
+
+const camera = new Camera(0, 0);
 
 const tileImages = {
     1: new Image(),
@@ -30,32 +73,101 @@ tileImages[7].src = 'assets/river-left-down.png';
 
 
 socket.on('init', (data) => {
-    renderMap(data.map);
+    map = data.map;
+    requestAnimationFrame(render);
 });
 
 setInterval(() => {
     // renderMap();
 }, 1000 / 60);
 
-function renderMap(map) {
-    for (let y = 0; y < MAP_HEIGHT; y++) {
-        for (let x = 0; x < MAP_WIDTH; x++) {
+function render() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.scale(camera.scale, camera.scale);
+
+    camera.update();
+
+    const startX = Math.floor(camera.x - 1);
+    const startY = Math.floor(camera.y - 1);
+    const endX = Math.ceil(camera.x + camera.width + 1);
+    const endY = Math.ceil(camera.y + camera.height + 1);
+
+    for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+            if (x < 0 || y < 0 || x >= MAP_WIDTH || y >= MAP_HEIGHT) continue;
+
             const tile = map[y][x];
-            const image = tileImages[tile];
-            if (image.complete) {
-                ctx.drawImage(image, x * TILE_SIZE * SCALE, y * TILE_SIZE * SCALE, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
-            } else {
-                ctx.fillStyle = 'gray';
-                ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                image.onload = () => {
-                    ctx.drawImage(image, x * TILE_SIZE * SCALE, y * TILE_SIZE * SCALE, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
-                };
+            const img = tileImages[tile];
+
+            if (!img.complete) {
+                ctx.fillStyle = '#ccc';
+                ctx.fillRect(
+                    (x - camera.x) * TILE_SIZE,
+                    (y - camera.y) * TILE_SIZE,
+                    TILE_SIZE,
+                    TILE_SIZE
+                );
+                continue;
             }
+
+            ctx.drawImage(
+                img,
+                (x - camera.x) * TILE_SIZE,
+                (y - camera.y) * TILE_SIZE,
+                TILE_SIZE,
+                TILE_SIZE
+            );
         }
     }
+
+    ctx.restore();
+    requestAnimationFrame(render);
 }
 
-window.addEventListener('mousedown', (event) => {});
+canvas.addEventListener('click', () => canvas.focus());
+window.addEventListener('load', () => canvas.focus());
 
-window.addEventListener('mousemove', (event) => {});
+let isDragging = false;
+let lastMouseX, lastMouseY;
 
+canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    lastMouseX = e.offsetX;
+    lastMouseY = e.offsetY;
+    camera.isDragging = true;
+    canvas.focus();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    const deltaX = e.offsetX - lastMouseX;
+    const deltaY = e.offsetY - lastMouseY;
+
+    // Calculate movement in world coordinates
+    const worldDeltaX = deltaX / (TILE_SIZE * camera.scale) * DRAG_SENSITIVITY;
+    const worldDeltaY = deltaY / (TILE_SIZE * camera.scale) * DRAG_SENSITIVITY;
+
+    // Update camera position
+    camera.x -= worldDeltaX;
+    camera.y -= worldDeltaY;
+
+    // Clamp to map boundaries
+    camera.setViewport(camera.x, camera.y);
+
+    // Update last position
+    lastMouseX = e.offsetX;
+    lastMouseY = e.offsetY;
+});
+canvas.addEventListener('mouseup', () => {
+    isDragging = false;
+    camera.isDragging = false;
+});
+
+canvas.addEventListener('mouseleave', () => {
+    isDragging = false;
+    camera.isDragging = false;
+});

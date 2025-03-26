@@ -14,6 +14,8 @@ const TILE_SIZE = 32;
 const ACCEPTABLE_TILES = [1];
 const RIVER_BUFFER = 3;
 
+let prevDir;
+
 const players = {};
 
 function createMap() {
@@ -26,118 +28,154 @@ function createMap() {
 
 function createRivers(map) {
     for (const startX of RIVER_STARTS) {
-      let x = startX;
-      let y = 0;
-      let prevDir = "down";
-      let failedAttempts = 0;
-      const maxFailedAttempts = 50; // Increase threshold so we don't quit too early
-  
-      // Initialize first two tiles
-      map[y][x] = 2; // Start tile
-      y++;
-      if (y < MAP_HEIGHT) {
-        map[y][x] = 2; // Second tile
-        y++;
-      }
-  
-      while (y < MAP_HEIGHT && failedAttempts < maxFailedAttempts) {
-        const result = nextRiverTile(map, x, y, prevDir, startX);
-  
-        if (result) {
-          // Check that the next tile is grass before using it
-          if (map[result.nextTile.y][result.nextTile.x] !== 1) {
-            failedAttempts++;
-            // Optionally log the failure:
-            console.log(`Tile at ${result.nextTile.x}, ${result.nextTile.y} is not grass.`);
-            continue;
-          }
-  
-          // Update position/direction and assign tile based on turn
-          let tileIndex = getTileIndexForDirection(prevDir, result.newDir);
-          map[y][x] = tileIndex;
-          x = result.nextTile.x;
-          y = result.nextTile.y;
-          prevDir = result.newDir;
-          failedAttempts = 0; // Reset failure count on success
-        } else {
-          // If no move returned, try forcing a downward step if available.
-          if (y < MAP_HEIGHT - 1 && map[y + 1][x] === 1) {
-            y++;
-            map[y][x] = 2; // Down tile
-            prevDir = "down";
-            failedAttempts = 0;
-          } else {
-            failedAttempts++;
-          }
-        }
-      }
-      // Ensure the river reaches the bottom if possible
-      if (y >= MAP_HEIGHT - 1 && map[y][x] === 1) {
-        map[y][x] = 2;
-      }
+        createSingleRiver(map, startX);
     }
-  }
-  
-  function nextRiverTile(map, x, y, prevDir, currentStartX) {
-    let possibleMoves = [];
-  
-    // Always allow downward movement if the tile is grass.
-    if (y < MAP_HEIGHT - 1 && map[y + 1][x] === 1) {
-      possibleMoves.push({ move: { x, y: y + 1, dir: "down" }, weight: 5 });
-    }
-  
-    // Allow horizontal movement only after the second row
-    if (y >= 2) {
-      let nearOtherStart = RIVER_STARTS.some(startX =>
-        startX !== currentStartX &&
-        x >= startX - RIVER_BUFFER &&
-        x <= startX + RIVER_BUFFER
-      );
-  
-      // Only allow horizontal if not too near another river’s start
-      if (!nearOtherStart) {
-        // Left move
-        if (x > 0 && map[y][x - 1] === 1) {
-          possibleMoves.push({ move: { x: x - 1, y, dir: "left" }, weight: 2 });
-        }
-        // Right move
-        if (x < MAP_WIDTH - 1 && map[y][x + 1] === 1) {
-          possibleMoves.push({ move: { x: x + 1, y, dir: "right" }, weight: 2 });
-        }
-      }
-    }
-  
-    if (possibleMoves.length === 0) return null;
-  
-    // Weighted random selection among the possible moves
-    const totalWeight = possibleMoves.reduce((sum, m) => sum + m.weight, 0);
-    let rand = Math.random() * totalWeight;
-    for (const option of possibleMoves) {
-      rand -= option.weight;
-      if (rand < 0) {
-        return { nextTile: option.move, newDir: option.move.dir };
-      }
-    }
-    return null; // Fallback (should not normally happen)
-  }
-  
-  function getTileIndexForDirection(prevDir, newDir) {
-    const directions = {
-      'down>down': 2,   // Straight down
-      'down>right': 4,  // Turning right (from down)
-      'down>left': 5,   // Turning left (from down)
-      'left>down': 3,   // Coming from left then down (horizontal to down)
-      'right>down': 3,  // Coming from right then down (horizontal to down)
-      'left>left': 6,   // Continuing left
-      'right>right': 7  // Continuing right
-    };
-    return directions[`${prevDir}>${newDir}`] || 2;
-  }
-  
-  function isValidTile(x, y) {
-    return x >= 0 && x < MAP_WIDTH && y >= 0 && y < MAP_HEIGHT;
-  }
+}
 
+/**
+ * Create one river from (startX,0) downwards, chunking horizontal moves
+ * and calling placeRiverTile(...) to assign the correct tile index.
+ */
+function createSingleRiver(map, startX) {
+    let x = startX;
+    let y = 0;
+    // We'll say the "previous direction" was 'down' when we place the first tile
+    let prevDir = 'down';
+
+    // Place the initial tile
+    placeRiverTile(map, x, y, 'down', prevDir);
+
+    while (y < MAP_HEIGHT - 1) {
+        // 70% chance to move down, 30% chance to move horizontally
+        if (Math.random() < 0.3) {
+            // Decide whether to go left or right, respecting “momentum”
+            let horizDir = decideHorizontalDir(prevDir);
+            if (horizDir === 'down') {
+                // fallback to moving down
+                if (!canMoveDown(map, x, y)) break;
+                y++;
+                placeRiverTile(map, x, y, 'down', prevDir);
+                prevDir = 'down';
+            } else {
+                // Move horizontally for 2–4 tiles
+                const chunkSize = 2 + Math.floor(Math.random() * 3);
+                for (let i = 0; i < chunkSize; i++) {
+                    if (!canMoveHoriz(map, x, y, horizDir)) break;
+                    x = (horizDir === 'left') ? x - 1 : x + 1;
+                    placeRiverTile(map, x, y, horizDir, prevDir);
+                    prevDir = horizDir;
+                }
+                // After moving horizontally, force at least one step down
+                if (!canMoveDown(map, x, y)) break;
+                y++;
+                placeRiverTile(map, x, y, 'down', prevDir);
+                prevDir = 'down';
+            }
+        } else {
+            // Just move down
+            if (!canMoveDown(map, x, y)) break;
+            y++;
+            placeRiverTile(map, x, y, 'down', prevDir);
+            prevDir = 'down';
+        }
+    }
+}
+
+/**
+ * Decide whether to go left or right, but avoid flipping if we just moved horizontally.
+ * Return 'left', 'right', or 'down' (to skip horizontal).
+ */
+function decideHorizontalDir(prevDir) {
+    const randomDir = (Math.random() < 0.5) ? 'left' : 'right';
+    // If we just moved left, sometimes skip going right immediately
+    if (prevDir === 'left' && randomDir === 'right') {
+        if (Math.random() < 0.5) return 'down';
+    }
+    // If we just moved right, sometimes skip going left immediately
+    if (prevDir === 'right' && randomDir === 'left') {
+        if (Math.random() < 0.5) return 'down';
+    }
+    return randomDir;
+}
+
+// --- Movement checks ---
+
+function canMoveDown(map, x, y) {
+    if (y + 1 >= MAP_HEIGHT) return false;
+    if (map[y + 1][x] !== 1) return false;
+    return true;
+}
+
+function canMoveHoriz(map, x, y, dir) {
+    let newX = (dir === 'left') ? x - 1 : x + 1;
+    if (newX < 0 || newX >= MAP_WIDTH) return false;
+    if (map[y][newX] !== 1) return false;
+    return true;
+}
+
+// --- Placing the tile ---
+
+/**
+ * Place a river tile at (x,y), using your direction-based indexing.
+ * @param {string} currentDir The direction of the current move.
+ * @param {string} prevDir The previous direction used in the last placed tile.
+ */
+function placeRiverTile(map, x, y, currentDir, prevDir) {
+    map[y][x] = getTileIndexForDirection(prevDir, currentDir);
+}
+
+/**
+ * This function maps the transition from prevDir -> currentDir to a tile index.
+ * Adjust these to match the exact shapes you want.
+ */
+function getTileIndexForDirection(prevDir, newDir) {
+    //
+    // Common definitions for 4-direction river sets:
+    // 2 = vertical
+    // 3 = horizontal
+    // 4 = "right turn"
+    // 5 = "left turn"
+    //
+    // But we need to decide carefully what "turn right" or "turn left" means
+    // when going from left->down, right->down, down->left, etc.
+    //
+    // The snippet below is one possible arrangement.
+    //
+
+    // 1) If continuing down
+    if (prevDir === 'down' && newDir === 'down') {
+        return 2; // vertical
+    }
+    // 2) If continuing left->left or right->right => horizontal
+    if (prevDir === 'left' && newDir === 'left') {
+        return 3; // horizontal
+    }
+    if (prevDir === 'right' && newDir === 'right') {
+        return 3; // horizontal
+    }
+
+    // 3) If turning from down to left => 5
+    if (prevDir === 'down' && newDir === 'left') {
+        return 5; // turn left
+    }
+    // 4) If turning from down to right => 4
+    if (prevDir === 'down' && newDir === 'right') {
+        return 4; // turn right
+    }
+
+    // 5) If turning from left to down => that might be a right turn
+    //    (Imagine you're traveling left, turning down is a right turn from that perspective.)
+    if (prevDir === 'left' && newDir === 'down') {
+        return 4;
+    }
+    // 6) If turning from right to down => that might be a left turn
+    if (prevDir === 'right' && newDir === 'down') {
+        return 5;
+    }
+
+    // Fallback (if something unexpected occurs):
+    return 2; // vertical
+}
 
 map = createMap();
 let easystar = new EasyStar.js();

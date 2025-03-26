@@ -7,21 +7,26 @@
     <title>Rice the kingdom II</title>
     <style>
         body {
-        background-color: black;
-        margin: 0;
-        overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+            background-color: black;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
+
         canvas {
-            border: 1px solid white;
+            /* border: 1px solid white; */
+        }
+
+        #canvas:focus {
+            /* border: 5px solid red; */
         }
     </style>
 </head>
 
 <body>
-    <canvas id="canvas" width="1600" height="900"></canvas>
+    <canvas id="canvas" width="1600" height="900" tabindex="0"></canvas>
     <script src="socket.io/socket.io.js"></script>
     <script defer src="client.js"></script>
 </body>
