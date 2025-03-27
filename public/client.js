@@ -15,7 +15,7 @@ const MAP_HEIGHT = 64;
 const MAP_WIDTH = 64;
 const VIEWPORT_WIDTH = 1600;
 const VIEWPORT_HEIGHT = 900;
-const SCALE = 2;
+const SCALE = 0.75;
 const DRAG_SENSITIVITY = 1;
 
 const players = {};
@@ -61,16 +61,17 @@ const tileImages = {
     5: new Image(),
     6: new Image(),
     7: new Image(),
+    8: new Image(),
 };
 
 tileImages[1].src = 'assets/grass.png';
-tileImages[2].src = 'assets/river.png';
-tileImages[3].src = 'assets/river-horizontal.png';
-tileImages[4].src = 'assets/river-right-turn.png';
-tileImages[5].src = 'assets/river-left-turn.png';
-tileImages[6].src = 'assets/river-right-down.png';
-tileImages[7].src = 'assets/river-left-down.png';
-
+tileImages[2].src = 'assets/water.png';
+tileImages[3].src = 'assets/water.png';
+tileImages[4].src = 'assets/water.png';
+tileImages[5].src = 'assets/water.png';
+tileImages[6].src = 'assets/water.png';
+tileImages[7].src = 'assets/water.png';
+tileImages[8].src = 'assets/tree.png';
 
 socket.on('init', (data) => {
     map = data.map;

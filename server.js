@@ -13,8 +13,7 @@ const RIVER_STARTS = [16, 32, 48];
 const TILE_SIZE = 32;
 const ACCEPTABLE_TILES = [1];
 const RIVER_BUFFER = 3;
-
-let prevDir;
+const TREE_DENSITY = 0.15;
 
 const players = {};
 
@@ -23,6 +22,7 @@ function createMap() {
         Array(MAP_WIDTH).fill(1)
     );
     createRivers(map);
+    createTrees(map);
     return map;
 }
 
@@ -176,6 +176,16 @@ function getTileIndexForDirection(prevDir, newDir) {
     // Fallback (if something unexpected occurs):
     return 2; // vertical
 }
+
+function createTrees(map) {
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+        for (let x = 0; x < MAP_WIDTH; x++) {
+            if (map[y][x] === 1 && Math.random() < TREE_DENSITY) {
+                map[y][x] = 8;
+            }
+        }
+    }
+} 
 
 map = createMap();
 let easystar = new EasyStar.js();
